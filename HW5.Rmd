@@ -5,3 +5,96 @@ date: "3/23/2022"
 output: html_document
 ---
 
+```{r}
+library(tidyverse)
+```
+
+# Problem 1 
+
+Import data
+
+```{r}
+crab = read.csv("HW5 data/HW5-crab.txt", sep = "")
+```
+
+
+## a) Fit a Poisson model (M1) with log link with W as the single predictor. 
+
+```{r}
+crab_M1 = glm(Sa ~ W, data = crab, family = poisson(link = log))
+summary(crab_M1)
+```
+
+Goodness of fit:
+
+```{r}
+#Deviance Analysis D_null-Dm ~ X^2 df=1
+pval_dev= 1 - pchisq(crab_M1$null.deviance - crab_M1$deviance, df = 1)
+#Pearson 
+G_crab_M1 = sum(residuals(crab_M1, type = 'pearson')^2)
+pval_pear = 1 - pchisq(G_crab_M1, df = 171)
+```
+
+From the summary, the null deviance is 632.79 and the model deviance is 567.88. Using deviance analysis, we found that the p-value = `r pval_dev`. Similarly, using pearson residual test, we have a p-value of `r pval_pear`. Both p-value are less than 0.05, therefore, we reject the null hypothesis and conclude that the model does not fit the data well. 
+
+Interpretation:
+The log rate ratio of the number of satellites is `r crab_M1$coefficients[2]` given a unit change in the crab's carapace width. 
+
+## b) Fit a model (M2) with W and Wt as predictors. 
+
+```{r}
+crab_M2 = glm(Sa ~ W + Wt, data = crab, family = poisson(link = log))
+summary(crab_M2)
+```
+
+Goodness of fit:
+
+```{r}
+#Deviance Analysis
+Dev_dif_M12 = crab_M1$deviance - crab_M2$deviance
+p_M12 = 1 - pchisq(Dev_dif_M12,df = 1)
+```
+
+The p value of the deviance test is `r p_M12` < 0.05. Therefore, we reject the null hypothesis that M2 fits the data as well as M1, and conclude that M2 is a better fit than M1. 
+
+Interpretation: 
+
+* The log rate ratio of the number of satellites is `r crab_M2$coefficients[2])`per unit change in carapace width, holding weight constant. 
+
+* The log rate ratio of the number of satellites is  `r crab_M2$coefficients[3])`per unit change in weight, holding carapace width constant. 
+
+## c) Check over dispersion in M2.
+
+
+```{r}
+res_M2 = residuals(crab_M2, type = 'pearson')
+
+G = sum(res_M2 ^ 2)
+#Dispersion parameter
+phi = G / (173 - 3)
+
+res = tibble(x = qnorm((173 + 1:173 + 0.5) / (2 * 173 + 1.125)),
+             y = sort(abs(res_M2)))
+
+res %>% ggplot(aes(x = x,y = y)) + 
+  geom_point() +
+  geom_abline(slope = 1) +
+  labs(x = 'Expected Half-Normal Order Stats', 
+       y = 'Ordered Absolute Pearson Residuals')
+```
+
+From the half normal plot, we can see that dispersion exists in M2. The dispersion parameter phi is calculated to be $\phi = 3.156$
+
+Adjust for dispersion
+
+
+```{r}
+M2_disp = summary(crab_M2, dispersion = phi)
+M2_disp
+```
+
+The estimate of the adjusted model is the same with the original model without adjustment of dispersion. Therefore, the interpretation stays the same that 
+
+* The log rate ratio of the number of satellites is `r M2_disp$coefficients[2])`per unit change in carapace width, holding weight constant. 
+
+* The log rate ratio of the number of satellites is  `r M2_disp$coefficients[3])`per unit change in weight, holding carapace width constant. 
