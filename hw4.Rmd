@@ -2,5 +2,215 @@
 title: "HW4"
 author: "Anna Ma"
 date: "3/5/2022"
-output: html_document
+output: pdf_document
 ---
+```{r, message = FALSE}
+library(tidyverse)
+library(dplyr)
+library(MASS) 
+library(nnet)
+```
+
+## Problem 1
+
+```{r}
+prob1_df = tibble(
+  contact = rep(rep(c("low","high"), each = 3),3),
+  home_type = rep(c("tower_block", "apartment", "house"), each = 6),
+  sat_level = rep(c("low satisfaction", "medium satisfaction", "high satisfaction"), 6),
+  sat_value = c(c(65, 54, 100, 34, 47, 100),c(130, 76, 111, 141, 116, 191), c(67, 48, 62, 130, 105, 104))
+) %>% 
+  mutate(sat_level = factor(sat_level, levels = c("low satisfaction", "medium satisfaction", "high satisfaction")),
+         home_type = factor(home_type, levels = c("apartment","house","tower_block")),
+         contact = factor(contact, levels = c("high","low")))
+```
+
+1. Association between satisfaction and contact with others
+
+```{r}
+sat_contact = prob1_df %>% 
+  group_by(contact, sat_level) %>% 
+  summarize(n = sum(sat_value)) %>% 
+  group_by(contact) %>% 
+  mutate(n_total = sum(n), 
+         percentage = paste(round((n * 100 / n_total),3),"%")) %>% 
+  dplyr::select(-n_total, -n) %>% 
+  pivot_wider(names_from = sat_level, values_from = percentage) 
+
+sat_contact %>% knitr::kable()
+```
+
+From the table we can see that people who have high contact with others has a higher proportion in high satisfaction. On the other hand, the proportion of satisfaction for people who has low contact with others spreads in low, medium, and high. The low contact group has a higher proportion in low satisfaction and a lower proportion in high satisfaction compare to high contact group. Meanwhile, both group has its lowest proportion in medium satisfaction. But generally, it appears that the association between satisfaction and contact with others does not vary too much much. 
+
+2. Association between satisfaction and type of housing 
+
+```{r}
+sat_type = prob1_df %>% 
+  group_by(home_type, sat_level) %>% 
+  summarize(n = sum(sat_value)) %>% 
+  group_by(home_type) %>% 
+  mutate(n_total = sum(n), 
+         percentage = paste(round((n * 100 / n_total),3),"%")) %>% 
+  dplyr::select(-n_total, -n) %>% 
+  pivot_wider(names_from = sat_level, values_from = percentage)
+
+
+sat_type %>% knitr::kable()
+```
+
+From the table, we can see that the satisfaction level varies only slightly for those who lives in apartments and houses. However, tower block residents generally has a high satisfaction and a smaller proportion of them has low satisfaction compare to the other two home types. 
+
+## Problem 2
+
+
+1. Model
+
+```{r}
+nom_data = prob1_df %>% pivot_wider(names_from = sat_level, values_from = sat_value)
+
+nom_mod = multinom(cbind(nom_data$`low satisfaction`,
+nom_data$`medium satisfaction`, nom_data$`high satisfaction`) ~ home_type + contact, data = nom_data)
+
+nom_mod_result = summary(nom_mod)
+
+nom_mod_result
+```
+
+The multinomial model is 
+
+$log(\frac{\pi_{2}(X)}{\pi_{1}(X)}) = \beta_{2}+\beta_{21}(HomeType=House)+\beta_{22}(HomeType=Tower Block)+\beta_{23}(Contact = Low) = -0.218+ 0.0697x_h+0.407x_t-0.296x_l$
+
+$log(\frac{\pi_{3}(X)}{\pi_{1}(X)}) = \beta_{3}+\beta_{31}(HomeType=House)+\beta_{32}(HomeType=Tower Block)+\beta_{33}(Contact = Low) = 0.247-0.304x_h+0.642x_t-0.328x_l$. 
+
+1 = low, 2 = medium, 3 = high
+
+2. Odds ratios and 95% confidence interval
+
+```{r}
+nom_mod %>% 
+  broom::tidy() %>% 
+  filter(term != '(Intercept)') %>% 
+  mutate(odds_ratio =exp(estimate),
+         Lower_bound = exp(estimate + qnorm(0.025)*std.error),
+         Higher_bound = exp(estimate - qnorm(0.025)*std.error)) %>% 
+  dplyr::select(y.level,term, odds_ratio, Lower_bound, Higher_bound)
+```
+
+From this result, we can conclude that given a reference group of people who lives in an apartment and has high contact with others:
+
+* people who lives in a house are 1.07 times more likely to have a medium satisfaction other than low satisfaction with a confidence interval of (0.809,1.42)
+
+* people who lives in a tower block are 1.5 times more likely to have a medium satisfaction other than low satisfaction with a confidence interval of (1.07,2.1)
+
+* people who have low contact with others are 0.744 times likely to have a medium satisfaction other than low satisfaction with a confidence interval of (0.576, 0.96)
+
+
+Given a reference group of people who lives in an apartment and has high contact with others: 
+
+* people who lives in a house are 0.738 times more likely to have a high satisfaction other than low satisfaction with a confidence interval of (0.566,0.962)
+
+* people who lives in a tower block are 1.9 times more likely to have a high satisfaction other than low satisfaction with a confidence interval of (1.42,2.55)
+
+* people who have a low contact with others are 0.72 times likely to have a high satisfaction other than low satisfaction with a confidence interval of (0.571,0.908)
+
+
+3. Goodness of Fit
+
+```{r}
+pihat = predict(nom_mod, type = 'probs') 
+m = rowSums(nom_data[,3:5])
+res.pearson = (nom_data[,3:5] - pihat*m)/sqrt(pihat*m)
+
+G.stat = sum(res.pearson^2)
+pval.G = 1 - pchisq(G.stat,df = (6-4)*(3-1)) 
+
+D.stat = sum(2*nom_data[,3:5] * log(nom_data[,3:5]/(m*pihat)))
+pval.D = 1 - pchisq(D.stat, df = (6 - 4) * (3 - 1))
+```
+
+The pvalue we got from Pearson chi-square analysis is `r round(pval.G, 3)`, and the p value we got from Deviance analysis is `r round(pval.D, 3)`. Since both p values are larger than 0.05, we failed to reject the null hypothesis. We can conclude that the model fits the data well.
+
+4. Interaction 
+$m_{int} = log(\frac{\pi_{j}(X)}{\pi_{1}(X)}) = \beta_{j}+\beta_{j1}(HomeType=House)+\beta_{j2}(HomeType=Tower Block)+\beta_{j3}(Contact = Low) + \beta_{j4}(Contact = Low * HomeType=House)+\beta_{j5}(Contact = Low * HomeType=Tower Block)$
+
+$H_0:\beta_{j4} = \beta_{j5} = 0,  j = 2,3$
+
+```{r}
+nom_mod_int = multinom(cbind(nom_data$`low satisfaction`,
+nom_data$`medium satisfaction`, nom_data$`high satisfaction`) ~ home_type + contact + home_type * contact, data = nom_data)
+
+dev0 = nom_mod$deviance
+dev1 = nom_mod_int$deviance
+diff = dev0 - dev1
+p = pchisq(diff, 4, lower.tail = FALSE)
+```
+
+Using the deviance analysis, we see that the difference between the models are `r diff`, and the p value is `r p`, which is larger than 0.05. Therefore, we fail to reject the null hypothesis and conclude that there is interaction between contact and home types. 
+
+## Problem 3
+
+1. Fit the model
+
+```{r}
+ord_mod = polr(sat_level ~ home_type + contact, data = prob1_df, weights = sat_value)
+
+ord_mod_result = summary(ord_mod)
+ord_mod_result
+```
+
+The ordinal model is 
+
+$log(\frac{\pi_{1}(X)}{\pi_{2}(X)+\pi_3(X)}) = \beta_{1}+\beta_{11}(HomeType=House)+\beta_{12}(HomeType=Tower Block)+\beta_{13}(Contact = Low) = -0.7488 - 0.2353x_h+0.501x_t-0.2524x_l$
+
+$log(\frac{\pi_{1}(X)+\pi_2(X)}{\pi_{3}(X)}) = \beta_{2}+\beta_{21}(HomeType=House)+\beta_{22}(HomeType=Tower Block)+\beta_{23}(Contact = Low) = -0.3637 - 0.2353x_h+0.501x_t-0.2524x_l$
+
+1 = low, 2 = medium, 3 = high
+
+2. Goodness of Fit
+
+```{r}
+ord_pihat = predict(ord_mod, nom_data, type = 'probs') 
+ord_m = rowSums(nom_data[,3:5])
+ord_res_pearson = (nom_data[,3:5] - ord_pihat*ord_m)/sqrt(ord_pihat*ord_m)
+
+ord_G.stat = sum(ord_res_pearson^2)
+ord_pval.G = 1 - pchisq(ord_G.stat,df = 7) 
+
+ord_D.stat = sum(2*nom_data[,3:5] * log(nom_data[,3:5]/(ord_m*ord_pihat)))
+ord_pval.D = 1 - pchisq(ord_D.stat, df = 7)
+
+```
+
+The pvalue we got from Pearson chi-square analysis is `r round(ord_pval.G, 3)`, and the p value we got from Deviance analysis is `r round(ord_pval.D, 3)`. Since both p values are larger than 0.05, we failed to reject the null hypothesis. We can conclude that the model fits the data well.
+
+
+3. Estimations and CIs 
+
+```{r}
+exp(cbind(coef(ord_mod), confint(ord_mod)))
+```
+
+From this result, we can conclude that holding the contact level constant, comparing to those who lives in apartments:
+
+* the odds of high satisfaction is 0.79 times the odds of low or medium satisfaction for residents who lives in a house with an confidence interval of (0.64,0.97) 
+* the odds of high satisfaction is 1.65 times the odds of low or medium satisfaction for residents who lives in a tower block with an confidence interval of (1.31,2.08) 
+
+Holding the home-type constant:
+
+* the odds of high satisfaction is 0.78 times the odds of low or medium satisfaction for residents who has low contact with others with an confidence interval of (0.64,0.93) 
+
+## Problem 4
+
+1. Pearson Residuals
+
+```{r}
+ord_pihat = predict(ord_mod, nom_data, type = 'probs') 
+ord_m = rowSums(nom_data[,3:5])
+ord_res_pearson = (nom_data[,3:5] - ord_pihat*ord_m)/sqrt(ord_pihat*ord_m)
+
+cbind(home_type = nom_data$home_type, contact = nom_data$contact, ord_res_pearson) %>% knitr::kable(digits = 3)
+```
+
+2. Largest discrepancy
+
+From the table above we can see that the largest discrepancy is when home type is house, contact level is high, and satisfaction level is high, the residual is -1.478
