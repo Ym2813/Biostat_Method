@@ -2,11 +2,12 @@
 title: "HW5"
 author: "Anna Ma"
 date: "3/23/2022"
-output: html_document
+output: pdf_document
 ---
 
-```{r}
+```{r, message=FALSE}
 library(tidyverse)
+library(pscl)
 ```
 
 # Problem 1 
@@ -38,7 +39,8 @@ pval_pear = 1 - pchisq(G_crab_M1, df = 171)
 From the summary, the null deviance is 632.79 and the model deviance is 567.88. Using deviance analysis, we found that the p-value = `r pval_dev`. Similarly, using pearson residual test, we have a p-value of `r pval_pear`. Both p-value are less than 0.05, therefore, we reject the null hypothesis and conclude that the model does not fit the data well. 
 
 Interpretation:
-The log rate ratio of the number of satellites is `r crab_M1$coefficients[2]` given a unit change in the crab's carapace width. 
+
+The log rate ratio of the number of satellites is `r crab_M1$coefficients[2]` given a unit change in the crab's carapace width. That is, the count of satellites changes `r exp(crab_M1$coefficients[2])` times per unit change in carapace width. 
 
 ## b) Fit a model (M2) with W and Wt as predictors. 
 
@@ -59,9 +61,9 @@ The p value of the deviance test is `r p_M12` < 0.05. Therefore, we reject the n
 
 Interpretation: 
 
-* The log rate ratio of the number of satellites is `r crab_M2$coefficients[2])`per unit change in carapace width, holding weight constant. 
+* The log rate ratio of the number of satellites is `r crab_M2$coefficients[2]`per unit change in carapace width, holding weight constant. That is, the count of satellites changes `r exp(crab_M2$coefficients[2])` times per unit change in carapace width.
 
-* The log rate ratio of the number of satellites is  `r crab_M2$coefficients[3])`per unit change in weight, holding carapace width constant. 
+* The log rate ratio of the number of satellites is  `r crab_M2$coefficients[3]`per unit change in weight, holding carapace width constant.That is, the count of satellites changes `r exp(crab_M2$coefficients[3])` times per unit change in weight.
 
 ## c) Check over dispersion in M2.
 
@@ -95,6 +97,82 @@ M2_disp
 
 The estimate of the adjusted model is the same with the original model without adjustment of dispersion. Therefore, the interpretation stays the same that 
 
-* The log rate ratio of the number of satellites is `r M2_disp$coefficients[2])`per unit change in carapace width, holding weight constant. 
+* The log rate ratio of the number of satellites is `r M2_disp$coefficients[2]`per unit change in carapace width, holding weight constant.That is, the count of satellites changes `r exp(M2_disp$coefficients[2])` times per unit change in carapace width.
 
-* The log rate ratio of the number of satellites is  `r M2_disp$coefficients[3])`per unit change in weight, holding carapace width constant. 
+* The log rate ratio of the number of satellites is  `r M2_disp$coefficients[3]`per unit change in weight, holding carapace width constant. That is, the count of satellites changes `r exp(M2_disp$coefficients[3])` times per unit change in weight.
+
+
+# Problem 2
+
+import data
+
+```{r}
+parasite = read.csv("HW5 data/HW5-parasite.txt", sep = "") %>%
+  janitor::clean_names() %>% 
+  mutate(year = factor(year), area = factor(area)) %>% 
+  drop_na()
+```
+
+## a) Fit a Poisson model with log link to the data with area, year, and length as predictors
+
+```{r}
+para_M1 = glm(intensity ~ area + year + length, data = parasite, family = poisson(link = log))
+summary(para_M1)
+```
+
+Interpretation:
+
+* The log count of parasites is `r para_M1$coefficients[1]` in year 1999, area 1, and fish length 0. That is, the count of parasite for a fish of 0 length in year 1999 at area 1 is `r exp(para_M1$coefficients[1])`
+
+* The log rate ratio of parasite intensity is `r para_M1$coefficients[2]` given area change from 1 to 2, holding year and fish length constant.That is, the counts of parasite for fish in area 2 is `r exp(para_M1$coefficients[2])` times the counts of parasite for fish in area 1. 
+
+* The log rate ratio of parasite intensity is `r para_M1$coefficients[3]` given area change from 1 to 3, holding year and fish length constant.That is, the counts of parasite for fish in area 3 is `r exp(para_M1$coefficients[3])` times the counts of parasite for fish in area 1. 
+
+* The log rate ratio of parasite intensity is `r para_M1$coefficients[4]` given area change from 1 to 4, holding year and fish length constant.That is, the counts of parasite for fish in area 4 is `r exp(para_M1$coefficients[4])` times the counts of parasite for fish in area 1. 
+
+
+* The log rate ratio of parasite intensity is `r para_M1$coefficients[5]` given year change from 1999 to 2000, holding area and fish length constant.That is, the counts of parasite in 2000 is `r exp(para_M1$coefficients[5])` times the counts of parasite in 1999. 
+
+
+* The log rate ratio of parasite intensity is `r para_M1$coefficients[6]` given year change from 1999 to 2001, holding area and fish length constant. That is, the counts of parasite in 2001 is `r exp(para_M1$coefficients[6])` times the counts of parasite in 1999. 
+
+
+* The log rate ratio of parasite intensity is `r para_M1$coefficients[7]` for 1 unit change in length, holding area and year constant. That is, the counts of parasite changes by `r exp(para_M1$coefficients[7])` times for every unit change in fish length. 
+
+## b) Test for goodness of fit of the model 
+
+```{r}
+#deviance
+pval_para_dev = 1 - pchisq(para_M1$deviance, nrow(parasite) - 7)
+#pearson
+G_para_M1 = sum(residuals(para_M1, type = 'pearson')^2)
+pval_para_G = 1 - pchisq(G_para_M1, 1187)
+```
+
+The deviance test gives a p value of `r pval_para_dev`, and the pearson test gives a p value of `r pval_para_G`. Both p-values are less than 0.05, therefore, we reject the null hypothesis and conclude that the model does not fit the data well. 
+
+## c) Take consideration of zero-inflation and fit appropriate model. 
+
+```{r}
+para_M2 = zeroinfl(intensity ~ year + length | area, data = parasite)
+summary(para_M2)
+```
+
+Interpretation
+
+1) Poisson Model
+
+* In the fish that is susceptible to parasite, the log rate ratio of parasite intensity is 0.421 given year change from 1999 to 2000, holding length constant.That is, the count of parasite in 2000 is `r exp(0.421)` times the count of parasite in 1999.
+
+* In the fish that is susceptible to parasite, the log rate ratio of parasite intensity is 0.098 given year change from 1999 to 2001, holding length constant.That is, the count of parasite in 2001 is `r exp(0.098)` times the count of parasite in 1999.
+
+* In the fish that is susceptible to parasite, the log rate ratio of parasite intensity is -0.044 given a unit change in the fish length, holding year constant. That is, the count of parasite changes by `r exp(-0.0439)` times for a unit change in fish length. 
+
+2) Binomial model
+
+* The log odds ratio of whether a fish is susceptible to parasite is 0.747 given area change from 1 to 2. That is, the odds of a susceptible for fish in area 2 is `r exp(0.747)` times compare to fish in area 1. 
+
+* The log odds ratio of whether a fish is susceptible to parasite is 0.681 given area change from 1 to 3. That is, the odds of a susceptible for fish in area 3 is `r exp(0.681)` times compare to fish in area 1. 
+
+* The log odds ratio of whether a fish is susceptible to parasite is -0.883 given area change from 1 to 4. That is, the odds of a susceptible for fish in area 4 is `r exp(-0.883)` times compare to fish in area 1. 
+
